@@ -105,11 +105,13 @@ with col2:
 
 # --- MATEMÁTICAS Y LÓGICA ---
 if st.button("Calcular Liquidación"):
-    v_cuotas = cuotas_df.dropna(subset=['Valor Capital', 'Fecha de Vencimiento'])
+    v_cuotas = cuotas_df.dropna(subset=['Valor Capital', 'Fecha de Vencimiento']).copy()
     v_cuotas = v_cuotas[v_cuotas['Valor Capital'] > 0]
+    v_cuotas['Fecha de Vencimiento'] = pd.to_datetime(v_cuotas['Fecha de Vencimiento']).dt.date
     
-    v_abonos = abonos_df.dropna(subset=['Valor Abono', 'Fecha Abono'])
+    v_abonos = abonos_df.dropna(subset=['Valor Abono', 'Fecha Abono']).copy()
     v_abonos = v_abonos[v_abonos['Valor Abono'] > 0]
+    v_abonos['Fecha Abono'] = pd.to_datetime(v_abonos['Fecha Abono']).dt.date
     
     if v_cuotas.empty:
         st.error("Ingrese al menos una cuota de capital válida.")
