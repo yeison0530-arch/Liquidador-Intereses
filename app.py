@@ -70,16 +70,35 @@ col1, space, col2 = st.columns([1, 0.1, 1])
 
 with col1:
     st.subheader("Cuotas de Capital")
-    cuotas_init = pd.DataFrame([{"Detalle": "Cuota 1", "Valor Capital": 1000000.0, "Fecha de Vencimiento": datetime.today().date() - timedelta(days=365)}])
-    cuotas_df = st.data_editor(cuotas_init, num_rows="dynamic", key="cuotas", use_container_width=True)
+    cuotas_init = pd.DataFrame(columns=["Detalle", "Valor Capital", "Fecha de Vencimiento"])
+    cuotas_df = st.data_editor(cuotas_init, num_rows="dynamic", key="cuotas", use_container_width=True,
+        column_config={
+            "Detalle": st.column_config.TextColumn("Detalle"),
+            "Valor Capital": st.column_config.NumberColumn("Valor Capital", format="$ %.0f", min_value=0.0),
+            "Fecha de Vencimiento": st.column_config.DateColumn("Fecha de Vencimiento")
+        }
+    )
     
     st.subheader("Intereses Corrientes Previos")
-    intereses_previos = st.number_input("Monto total (Valor estático, no anatocismo)", min_value=0.0, step=1000.0)
+    st.markdown("<span class='metric-label'>Monto (Valor estático, no anatocismo)</span>", unsafe_allow_html=True)
+    int_init = pd.DataFrame(columns=["Detalle", "Monto Interés"])
+    int_df = st.data_editor(int_init, num_rows="dynamic", key="intereses", use_container_width=True,
+        column_config={
+            "Detalle": st.column_config.TextColumn("Detalle"),
+            "Monto Interés": st.column_config.NumberColumn("Monto Interés", format="$ %.0f", min_value=0.0)
+        }
+    )
+    intereses_previos = float(pd.to_numeric(int_df["Monto Interés"], errors='coerce').sum())
 
 with col2:
     st.subheader("Abonos Realizados")
-    abonos_init = pd.DataFrame([{"Valor Abono": 0.0, "Fecha Abono": datetime.today().date() - timedelta(days=180)}])
-    abonos_df = st.data_editor(abonos_init, num_rows="dynamic", key="abonos", use_container_width=True)
+    abonos_init = pd.DataFrame(columns=["Valor Abono", "Fecha Abono"])
+    abonos_df = st.data_editor(abonos_init, num_rows="dynamic", key="abonos", use_container_width=True,
+        column_config={
+            "Valor Abono": st.column_config.NumberColumn("Valor Abono", format="$ %.0f", min_value=0.0),
+            "Fecha Abono": st.column_config.DateColumn("Fecha Abono")
+        }
+    )
     
     st.subheader("Cortar Liquidación En:")
     fecha_liquidacion = st.date_input("Fecha de Liquidación", value=datetime.today().date())
