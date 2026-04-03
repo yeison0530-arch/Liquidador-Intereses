@@ -73,9 +73,9 @@ with col1:
     cuotas_init = pd.DataFrame(columns=["Detalle", "Valor Capital", "Fecha de Vencimiento"])
     cuotas_df = st.data_editor(cuotas_init, num_rows="dynamic", key="cuotas", use_container_width=True,
         column_config={
-            "Detalle": st.column_config.TextColumn("Detalle"),
-            "Valor Capital": st.column_config.NumberColumn("Valor Capital", format="$ %.0f", min_value=0.0),
-            "Fecha de Vencimiento": st.column_config.DateColumn("Fecha de Vencimiento")
+            "Detalle": st.column_config.TextColumn("Detalle", help="Ejemplo: 'Pagaré 001' o 'Factura 123'."),
+            "Valor Capital": st.column_config.NumberColumn("Valor Capital", format="$ %,.2f", min_value=0.0, help="Escriba el valor numérico sin puntos ni signos adicionales. Ejemplo: Ingrese 1500000.50 y el sistema lo formateará automáticamente como $ 1,500,000.50"),
+            "Fecha de Vencimiento": st.column_config.DateColumn("Fecha de Vencimiento", help="Seleccione la fecha exacta en la que debió realizarse el pago.")
         }
     )
     
@@ -84,8 +84,8 @@ with col1:
     int_init = pd.DataFrame(columns=["Detalle", "Monto Interés"])
     int_df = st.data_editor(int_init, num_rows="dynamic", key="intereses", use_container_width=True,
         column_config={
-            "Detalle": st.column_config.TextColumn("Detalle"),
-            "Monto Interés": st.column_config.NumberColumn("Monto Interés", format="$ %.0f", min_value=0.0)
+            "Detalle": st.column_config.TextColumn("Detalle", help="Ejemplo: 'Intereses causados hasta el mes pasado'."),
+            "Monto Interés": st.column_config.NumberColumn("Monto Interés", format="$ %,.2f", min_value=0.0, help="Escriba el valor numérico sin puntuación de miles. Ejemplo: Ingrese 150000 y se formateará como $ 150,000.00")
         }
     )
     intereses_previos = float(pd.to_numeric(int_df["Monto Interés"], errors='coerce').sum())
@@ -95,13 +95,13 @@ with col2:
     abonos_init = pd.DataFrame(columns=["Valor Abono", "Fecha Abono"])
     abonos_df = st.data_editor(abonos_init, num_rows="dynamic", key="abonos", use_container_width=True,
         column_config={
-            "Valor Abono": st.column_config.NumberColumn("Valor Abono", format="$ %.0f", min_value=0.0),
-            "Fecha Abono": st.column_config.DateColumn("Fecha Abono")
+            "Valor Abono": st.column_config.NumberColumn("Valor Abono", format="$ %,.2f", min_value=0.0, help="Escriba el valor del abono sin puntos de miles. Ejemplo: Ingrese 500000 para referirse a $ 500,000.00"),
+            "Fecha Abono": st.column_config.DateColumn("Fecha Abono", help="Seleccione la fecha exacta en la que el comprobante muestra el abono.")
         }
     )
     
     st.subheader("Cortar Liquidación En:")
-    fecha_liquidacion = st.date_input("Fecha de Liquidación", value=datetime.today().date())
+    fecha_liquidacion = st.date_input("Fecha de Liquidación", value=datetime.today().date(), help="Indica hasta qué fecha se calculará la liquidación de intereses (generalmente la fecha actual).")
 
 # --- MATEMÁTICAS Y LÓGICA ---
 if st.button("Calcular Liquidación"):
