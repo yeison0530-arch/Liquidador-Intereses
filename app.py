@@ -237,20 +237,74 @@ if st.button("Calcular Liquidación"):
     }
     
     # Excel Extractor
-    def to_excel(df_in):
+    def to_excel(df_in, v_cuotas_in, v_abonos_in, fecha_liq, int_previos):
         out = io.BytesIO()
         df_export = df_in.copy()
         df_export['Desde'] = df_export['Desde'].astype(str)
         df_export['Hasta'] = df_export['Hasta'].astype(str)
         with pd.ExcelWriter(out, engine='openpyxl') as w:
-            df_export.to_excel(w, index=False)
+            sheet_name = 'Liquidación'
+            current_row = 0
+            
+            # Resumen Datos
+            pd.DataFrame([["DATOS DILIGENCIADOS"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+            current_row += 1
+            pd.DataFrame([{
+                "Fecha de Liquidación": str(fecha_liq),
+                "Intereses Corrientes Previos": f"${int_previos:,.2f}"
+            }]).to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+            current_row += 3
+            
+            if not v_cuotas_in.empty:
+                pd.DataFrame([["CUOTAS DE CAPITAL"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                current_row += 1
+                v_cuotas_in.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+                current_row += len(v_cuotas_in) + 2
+                
+            if not v_abonos_in.empty:
+                pd.DataFrame([["ABONOS REALIZADOS"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                current_row += 1
+                v_abonos_in.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+                current_row += len(v_abonos_in) + 2
+                
+            pd.DataFrame([["TABLA DE LIQUIDACIÓN"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+            current_row += 1
+            df_export.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+            
         return out.getvalue()
         
-    def to_pdf(df_in, ts):
+    def to_pdf(df_in, ts, v_cuotas_in, v_abonos_in, fecha_liq, int_previos):
         p = FPDF(orientation='L', format='A4')
         p.add_page()
         p.set_font('Arial', 'B', 14)
         p.cell(0, 10, 'Liquidador de Intereses Moratorios Judiciales', 0, 1, 'C')
+        
+        # Datos Iniciales
+        p.set_font('Arial', 'B', 10)
+        p.cell(0, 8, 'Datos Diligenciados', 0, 1, 'L')
+        p.set_font('Arial', '', 9)
+        p.cell(0, 6, f'Fecha de Liquidacion: {fecha_liq}     Intereses Corrientes Previos: ${int_previos:,.2f}', 0, 1, 'L')
+        p.ln(2)
+        
+        if not v_cuotas_in.empty:
+            p.set_font('Arial', 'B', 9)
+            p.cell(0, 6, 'Cuotas de Capital', 0, 1, 'L')
+            p.set_font('Arial', '', 8)
+            for _, r in v_cuotas_in.iterrows():
+                detalle = r.get('Detalle', '')
+                p.cell(0, 5, f"- Detalle: {detalle}       Capital: ${r['Valor Capital']:,.2f}       Vence: {r['Fecha de Vencimiento']}", 0, 1, 'L')
+            p.ln(2)
+            
+        if not v_abonos_in.empty:
+            p.set_font('Arial', 'B', 9)
+            p.cell(0, 6, 'Abonos Realizados', 0, 1, 'L')
+            p.set_font('Arial', '', 8)
+            for _, r in v_abonos_in.iterrows():
+                p.cell(0, 5, f"- Abono: ${r['Valor Abono']:,.2f}       Fecha: {r['Fecha Abono']}", 0, 1, 'L')
+            p.ln(4)
+        
+        p.set_font('Arial', 'B', 10)
+        p.cell(0, 8, 'Tabla de Liquidacion', 0, 1, 'L')
         p.set_font('Arial', size=7)
         cols = ['Desde', 'Hasta', 'Dias', 'Capital', 'IBC%', 'Mora%', 'M.Men%', 'Int.Gen', 'Abo.Int', 'Abo.Cap', 'SF.Cap', 'SF.Int', 'Total']
         wds = [18, 18, 8, 22, 10, 12, 12, 23, 18, 18, 26, 26, 26]
@@ -285,10 +339,10 @@ if st.button("Calcular Liquidación"):
     
     e1, e2, e3 = st.columns([1,1,2])
     with e1:
-        st.download_button("📥 Descargar Excel", data=to_excel(df_res), file_name="liquidacion.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Descargar Excel", data=to_excel(df_res, v_cuotas, v_abonos, fecha_liquidacion, intereses_previos), file_name="liquidacion.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with e2:
         try:
-            pdf_bytes = to_pdf(df_res, totales_res)
+            pdf_bytes = to_pdf(df_res, totales_res, v_cuotas, v_abonos, fecha_liquidacion, intereses_previos)
             st.download_button("📄 Descargar PDF", data=pdf_bytes, file_name="liquidacion.pdf", mime="application/pdf")
         except Exception as e:
             st.warning(f"Error generando PDF: {e}")
