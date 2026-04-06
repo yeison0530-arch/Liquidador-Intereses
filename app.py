@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, timedelta
 import io
 from fpdf import FPDF
+import re
 
 # Configuración de página
 st.set_page_config(page_title="Liquidador de Intereses", layout="wide")
@@ -70,8 +71,20 @@ col1, space, col2 = st.columns([1, 0.1, 1])
 
 with col1:
     st.subheader("Cuotas de Capital")
-    cuotas_init = pd.DataFrame(columns=["Detalle", "Valor Capital", "Fecha de Vencimiento"])
-    cuotas_df = st.data_editor(cuotas_init, num_rows="dynamic", key="cuotas", use_container_width=True,
+    
+    if "cuotas_data" not in st.session_state:
+        st.session_state.cuotas_data = pd.DataFrame({
+            "Detalle": ["Obligación 1"],
+            "Valor Capital": [None],
+            "Fecha de Vencimiento": pd.Series([pd.NaT], dtype='datetime64[ns]')
+        })
+
+    cuotas_df = st.data_editor(
+        st.session_state.cuotas_data,
+        num_rows="dynamic",
+        key="cuotas_editor",
+        hide_index=True,
+        use_container_width=True,
         column_config={
             "Detalle": st.column_config.TextColumn("Detalle", help="Ejemplo: 'Pagaré 001' o 'Factura 123'."),
             "Valor Capital": st.column_config.NumberColumn("Valor Capital", format="$ %,.2f", min_value=0.0, help="Escriba el valor numérico sin puntos ni signos adicionales. Ejemplo: Ingrese 1500000.50 y el sistema lo formateará automáticamente como $ 1,500,000.50"),
@@ -79,10 +92,45 @@ with col1:
         }
     )
     
+    if st.button("➕ Añadir Siguiente Cuota Automáticamente"):
+        if not cuotas_df.empty:
+            ultima_fila = cuotas_df.iloc[-1]
+            last_detalle = str(ultima_fila["Detalle"]) if pd.notna(ultima_fila["Detalle"]) and str(ultima_fila["Detalle"]).strip() != "" else ""
+            match = re.search(r'(\d+)$', last_detalle)
+            if match:
+                num = int(match.group(1))
+                new_detalle = last_detalle[:match.start()] + str(num + 1)
+            else:
+                new_detalle = last_detalle + " 2" if last_detalle else "Obligación 2"
+                
+            new_capital = ultima_fila["Valor Capital"]
+            
+            new_fecha = pd.NaT
+            if pd.notna(ultima_fila["Fecha de Vencimiento"]):
+                dt_obj = pd.to_datetime(ultima_fila["Fecha de Vencimiento"])
+                new_fecha = dt_obj + pd.DateOffset(months=1)
+                
+            nueva_fila_df = pd.DataFrame({
+                "Detalle": [new_detalle],
+                "Valor Capital": [new_capital],
+                "Fecha de Vencimiento": pd.Series([new_fecha], dtype='datetime64[ns]')
+            })
+            
+            # Forzar datetime64[ns] sobre cuotas_df antes de concatenar para prevenir el error pyarrow
+            cuotas_df["Fecha de Vencimiento"] = pd.to_datetime(cuotas_df["Fecha de Vencimiento"])
+            
+            st.session_state.cuotas_data = pd.concat([cuotas_df, nueva_fila_df], ignore_index=True)
+            
+            # Borramos el estado interno del editor para que cargue limpiamente la tabla concatenada
+            if "cuotas_editor" in st.session_state:
+                del st.session_state["cuotas_editor"]
+                
+            st.rerun()
+    
     st.subheader("Intereses Corrientes Previos")
     st.markdown("<span class='metric-label'>Monto (Valor estático, no anatocismo)</span>", unsafe_allow_html=True)
     int_init = pd.DataFrame(columns=["Detalle", "Monto Interés"])
-    int_df = st.data_editor(int_init, num_rows="dynamic", key="intereses", use_container_width=True,
+    int_df = st.data_editor(int_init, num_rows="dynamic", key="intereses", hide_index=True, use_container_width=True,
         column_config={
             "Detalle": st.column_config.TextColumn("Detalle", help="Ejemplo: 'Intereses causados hasta el mes pasado'."),
             "Monto Interés": st.column_config.NumberColumn("Monto Interés", format="$ %,.2f", min_value=0.0, help="Escriba el valor numérico sin puntuación de miles. Ejemplo: Ingrese 150000 y se formateará como $ 150,000.00")
@@ -93,7 +141,7 @@ with col1:
 with col2:
     st.subheader("Abonos Realizados")
     abonos_init = pd.DataFrame(columns=["Valor Abono", "Fecha Abono"])
-    abonos_df = st.data_editor(abonos_init, num_rows="dynamic", key="abonos", use_container_width=True,
+    abonos_df = st.data_editor(abonos_init, num_rows="dynamic", key="abonos", hide_index=True, use_container_width=True,
         column_config={
             "Valor Abono": st.column_config.NumberColumn("Valor Abono", format="$ %,.2f", min_value=0.0, help="Escriba el valor del abono sin puntos de miles. Ejemplo: Ingrese 500000 para referirse a $ 500,000.00"),
             "Fecha Abono": st.column_config.DateColumn("Fecha Abono", help="Seleccione la fecha exacta en la que el comprobante muestra el abono.")
