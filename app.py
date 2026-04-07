@@ -232,9 +232,8 @@ if st.button("Calcular Liquidación"):
         
         ibc = obtener_tasa_vigente(start_d, df_tasas)
         t_mora_anual = (ibc * 1.5) / 100.0
-        ted = ((1.0 + t_mora_anual)**(1.0/365.0)) - 1.0
         
-        int_gen = capital_base * ted * dias
+        int_gen = capital_base * ((1.0 + t_mora_anual) ** (dias / 365.0) - 1.0)
         intereses_acumulados += int_gen
         
         results.append({
@@ -242,9 +241,7 @@ if st.button("Calcular Liquidación"):
             'Hasta': (end_d - timedelta(days=1)),
             'Días': dias,
             'Capital Base': capital_base,
-            'IBC (%)': ibc,
-            'Tasa Moratoria Aplicada (%)': ibc * 1.5,
-            'Tasa Moratoria Mensual (%)': (ibc * 1.5) / 12.0,
+            'Tasa E.A. Aplicada (%)': ibc * 1.5,
             'Interés Generado en el Periodo': int_gen,
             'Abono a Intereses': abono_interes_periodo,
             'Abono a Capital': abono_capital_periodo,
@@ -273,7 +270,7 @@ if st.button("Calcular Liquidación"):
         'Abono a Intereses': '${:,.2f}', 'Abono a Capital': '${:,.2f}',
         'Saldo Capital Acumulado': '${:,.2f}', 'Saldo Intereses Acumulados': '${:,.2f}',
         'Total Fila (Capital + Intereses)': '${:,.2f}',
-        'IBC (%)': '{:.2f}%', 'Tasa Moratoria Aplicada (%)': '{:.2f}%', 'Tasa Moratoria Mensual (%)': '{:.2f}%'
+        'Tasa E.A. Aplicada (%)': '{:.2f}%'
     }), use_container_width=True)
     
     # Export
@@ -351,11 +348,18 @@ if st.button("Calcular Liquidación"):
                 p.cell(0, 5, f"- Abono: ${r['Valor Abono']:,.2f}       Fecha: {r['Fecha Abono']}", 0, 1, 'L')
             p.ln(4)
         
+        texto_metodologia = (
+            "Metodología de Liquidación: La presente liquidación se rige por los preceptos del Código General del Proceso y la jurisprudencia aplicable. Se respeta la prohibición de anatocismo al mantener el capital base inalterado; los intereses causados se relacionan en una columna independiente de acumulados. La tasa de interés aplicable corresponde a 1.5 veces el Interés Bancario Corriente certificado por la Superintendencia Financiera en su modalidad Efectiva Anual (E.A.). Para cada periodo liquidado, la tasa E.A. es convertida a su equivalencia fraccionada aplicando la fórmula exponencial matemática [(1+EA)^(días/365)-1], garantizando el cálculo exacto de los intereses sin acudir a tasas nominales divididas aritméticamente."
+        )
+        p.set_font('Arial', '', 8)
+        p.multi_cell(0, 4, texto_metodologia, align='J')
+        p.ln(2)
+
         p.set_font('Arial', 'B', 10)
         p.cell(0, 8, 'Tabla de Liquidacion', 0, 1, 'L')
         p.set_font('Arial', size=7)
-        cols = ['Desde', 'Hasta', 'Dias', 'Capital', 'IBC%', 'Mora%', 'M.Men%', 'Int.Gen', 'Abo.Int', 'Abo.Cap', 'SF.Cap', 'SF.Int', 'Total']
-        wds = [18, 18, 8, 22, 10, 12, 12, 23, 18, 18, 26, 26, 26]
+        cols = ['Desde', 'Hasta', 'Dias', 'Capital', 'Tasa E.A%', 'Int.Gen', 'Abo.Int', 'Abo.Cap', 'SF.Cap', 'SF.Int', 'Total']
+        wds = [20, 20, 10, 28, 18, 28, 22, 22, 35, 36, 38]
         for i, c in enumerate(cols):
             p.cell(wds[i], 8, c, border=1, align='C')
         p.ln()
@@ -364,15 +368,13 @@ if st.button("Calcular Liquidación"):
             p.cell(wds[1], 6, str(r['Hasta']), border=1)
             p.cell(wds[2], 6, str(r['Días']), border=1, align='C')
             p.cell(wds[3], 6, f"${r['Capital Base']:,.2f}", border=1, align='R')
-            p.cell(wds[4], 6, f"{r['IBC (%)']:.2f}%", border=1, align='C')
-            p.cell(wds[5], 6, f"{r['Tasa Moratoria Aplicada (%)']:.2f}%", border=1, align='C')
-            p.cell(wds[6], 6, f"{r['Tasa Moratoria Mensual (%)']:.2f}%", border=1, align='C')
-            p.cell(wds[7], 6, f"${r['Interés Generado en el Periodo']:,.2f}", border=1, align='R')
-            p.cell(wds[8], 6, f"${r['Abono a Intereses']:,.2f}", border=1, align='R')
-            p.cell(wds[9], 6, f"${r['Abono a Capital']:,.2f}", border=1, align='R')
-            p.cell(wds[10], 6, f"${r['Saldo Capital Acumulado']:,.2f}", border=1, align='R')
-            p.cell(wds[11], 6, f"${r['Saldo Intereses Acumulados']:,.2f}", border=1, align='R')
-            p.cell(wds[12], 6, f"${r['Total Fila (Capital + Intereses)']:,.2f}", border=1, align='R')
+            p.cell(wds[4], 6, f"{r['Tasa E.A. Aplicada (%)']:.2f}%", border=1, align='C')
+            p.cell(wds[5], 6, f"${r['Interés Generado en el Periodo']:,.2f}", border=1, align='R')
+            p.cell(wds[6], 6, f"${r['Abono a Intereses']:,.2f}", border=1, align='R')
+            p.cell(wds[7], 6, f"${r['Abono a Capital']:,.2f}", border=1, align='R')
+            p.cell(wds[8], 6, f"${r['Saldo Capital Acumulado']:,.2f}", border=1, align='R')
+            p.cell(wds[9], 6, f"${r['Saldo Intereses Acumulados']:,.2f}", border=1, align='R')
+            p.cell(wds[10], 6, f"${r['Total Fila (Capital + Intereses)']:,.2f}", border=1, align='R')
             p.ln()
             
         p.ln(10)
