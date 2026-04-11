@@ -4,3 +4,5 @@ requests
 fpdf2
 openpyxl
 python-dateutil
+streamlit-drawable-canvas
+Pillow

@@ -5,6 +5,14 @@ from datetime import datetime, timedelta
 import io
 from fpdf import FPDF
 import re
+from PIL import Image
+from streamlit_drawable_canvas import st_canvas
+import numpy as np
+import openpyxl
+from openpyxl.styles import Font
+from openpyxl.drawing.image import Image as OpenpyxlImage
+import tempfile
+import os
 
 # Configuración de página
 st.set_page_config(page_title="Liquidador de Intereses", layout="wide")
@@ -151,6 +159,45 @@ with col2:
     st.subheader("Cortar Liquidación En:")
     fecha_liquidacion = st.date_input("Fecha de Liquidación", value=datetime.today().date(), help="Indica hasta qué fecha se calculará la liquidación de intereses (generalmente la fecha actual).")
 
+# --- OPCIONES DE DOCUMENTO Y FIRMA ---
+st.markdown("---")
+st.subheader("Opciones del Documento")
+
+texto_inicial = st.text_area("Texto Inicial (Ej. Constancia Secretarial)", help="Este texto se mostrará en la parte superior del documento generado.")
+
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    firma_nombre = st.text_input("Nombre completo del firmante", help="Ej. Juan Pérez")
+with col_f2:
+    firma_cargo = st.text_input("Cargo o Profesión", help="Ej. Secretario")
+
+st.markdown("**Firma Electrónica**")
+tipo_firma = st.radio("Método de firma", ["Ninguno (No firma)", "Dibujar con el Mouse", "Subir Imagen"], horizontal=True)
+
+firma_imagen = None
+if tipo_firma == "Dibujar con el Mouse":
+    st.write("Dibuje su firma en el recuadro blanco:")
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",
+        stroke_width=3,
+        stroke_color="#000000",
+        background_color="#FFFFFF",
+        update_streamlit=True,
+        height=250,
+        width=800,
+        drawing_mode="freedraw",
+        key="canvas_firma",
+    )
+    if canvas_result.image_data is not None:
+        img_array = canvas_result.image_data
+        if np.any(img_array[:, :, 3] > 0): # Check if there is drawn content
+            firma_imagen = Image.fromarray(img_array.astype('uint8'), 'RGBA')
+elif tipo_firma == "Subir Imagen":
+    st.info("💡 **Consejo para pegar:** Selecciona este recuadro y presiona **Ctrl + V** en tu teclado para pegar una firma que hayas copiado de otro lado.")
+    archivo_firma = st.file_uploader("Sube o pega una imagen de tu firma", type=["png", "jpg", "jpeg"])
+    if archivo_firma is not None:
+        firma_imagen = Image.open(archivo_firma)
+
 # --- MATEMÁTICAS Y LÓGICA ---
 if st.button("Calcular Liquidación"):
     v_cuotas = cuotas_df.dropna(subset=['Valor Capital', 'Fecha de Vencimiento']).copy()
@@ -282,47 +329,91 @@ if st.button("Calcular Liquidación"):
     }
     
     # Excel Extractor
-    def to_excel(df_in, v_cuotas_in, v_abonos_in, fecha_liq, int_previos):
+    def to_excel(df_in, v_cuotas_in, v_abonos_in, fecha_liq, int_previos, texto_constancia, f_nombre, f_cargo, f_img):
         out = io.BytesIO()
         df_export = df_in.copy()
         df_export['Desde'] = df_export['Desde'].astype(str)
         df_export['Hasta'] = df_export['Hasta'].astype(str)
-        with pd.ExcelWriter(out, engine='openpyxl') as w:
-            sheet_name = 'Liquidación'
-            current_row = 0
+        
+        tmp_name = None
+        if f_img is not None:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                tmp_name = tmp.name
+            f_img.save(tmp_name, format="PNG")
             
-            # Resumen Datos
-            pd.DataFrame([["DATOS DILIGENCIADOS"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
-            current_row += 1
-            pd.DataFrame([{
-                "Fecha de Liquidación": str(fecha_liq),
-                "Intereses Corrientes Previos": f"${int_previos:,.2f}"
-            }]).to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
-            current_row += 3
-            
-            if not v_cuotas_in.empty:
-                pd.DataFrame([["CUOTAS DE CAPITAL"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
-                current_row += 1
-                v_cuotas_in.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
-                current_row += len(v_cuotas_in) + 2
+        try:
+            with pd.ExcelWriter(out, engine='openpyxl') as w:
+                sheet_name = 'Liquidación'
+                current_row = 0
                 
-            if not v_abonos_in.empty:
-                pd.DataFrame([["ABONOS REALIZADOS"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                # Resumen Datos
+                if texto_constancia and texto_constancia.strip() != "":
+                    pd.DataFrame([[texto_constancia.strip()]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                    current_row += 3
+                    
+                pd.DataFrame([["DATOS DILIGENCIADOS"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
                 current_row += 1
-                v_abonos_in.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
-                current_row += len(v_abonos_in) + 2
+                pd.DataFrame([{
+                    "Fecha de Liquidación": str(fecha_liq),
+                    "Intereses Corrientes Previos": f"${int_previos:,.2f}"
+                }]).to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+                current_row += 3
                 
-            pd.DataFrame([["TABLA DE LIQUIDACIÓN"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
-            current_row += 1
-            df_export.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
-            
+                if not v_cuotas_in.empty:
+                    pd.DataFrame([["CUOTAS DE CAPITAL"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                    current_row += 1
+                    v_cuotas_in.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+                    current_row += len(v_cuotas_in) + 2
+                    
+                if not v_abonos_in.empty:
+                    pd.DataFrame([["ABONOS REALIZADOS"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                    current_row += 1
+                    v_abonos_in.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+                    current_row += len(v_abonos_in) + 2
+                    
+                pd.DataFrame([["TABLA DE LIQUIDACIÓN"]]).to_excel(w, sheet_name=sheet_name, index=False, header=False, startrow=current_row)
+                current_row += 1
+                df_export.to_excel(w, sheet_name=sheet_name, index=False, startrow=current_row)
+                
+                current_row += len(df_export) + 3
+                
+                ws = w.sheets[sheet_name]
+                if f_img is not None and tmp_name:
+                    img_xl = OpenpyxlImage(tmp_name)
+                    # Mantener proporciones base
+                    ratio = img_xl.height / img_xl.width if img_xl.width > 0 else 1
+                    img_xl.width = 200
+                    img_xl.height = int(200 * ratio)
+                    ws.add_image(img_xl, f"B{current_row + 1}")
+                    current_row += int(img_xl.height / 15) + 1 # Estimar filas ocupadas
+                            
+                if f_nombre.strip() or f_cargo.strip():
+                    if f_nombre.strip():
+                        ws.cell(row=current_row + 1, column=2, value=f_nombre.strip().upper())
+                        ws.cell(row=current_row + 1, column=2).font = Font(bold=True)
+                        current_row += 1
+                    if f_cargo.strip():
+                        ws.cell(row=current_row + 1, column=2, value=f_cargo.strip())
+        finally:
+            if tmp_name and os.path.exists(tmp_name):
+                try:
+                    os.remove(tmp_name)
+                except:
+                    pass
+                    
         return out.getvalue()
         
-    def to_pdf(df_in, ts, v_cuotas_in, v_abonos_in, fecha_liq, int_previos):
+    def to_pdf(df_in, ts, v_cuotas_in, v_abonos_in, fecha_liq, int_previos, texto_constancia, f_nombre, f_cargo, f_img):
         p = FPDF(orientation='L', format='A4')
         p.add_page()
         p.set_font('Arial', 'B', 14)
         p.cell(0, 10, 'Liquidador de Intereses Moratorios Judiciales', 0, 1, 'C')
+        
+        if texto_constancia and texto_constancia.strip() != "":
+            p.ln(2)
+            p.set_font('Arial', '', 10)
+            p.multi_cell(0, 5, texto_constancia.strip(), align='J')
+            p.ln(4)
         
         # Datos Iniciales
         p.set_font('Arial', 'B', 10)
@@ -385,14 +476,42 @@ if st.button("Calcular Liquidación"):
             p.cell(70, 6, str(k), border=1)
             p.cell(40, 6, f"${v:,.2f}", border=1, align='R')
             p.ln()
+            
+        p.ln(15)
+        if p.get_y() > 165:
+            p.add_page()
+            
+        if f_img is not None:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                tmp_name = tmp.name
+            f_img.save(tmp_name, format="PNG")
+            try:
+                p.image(tmp_name, w=40)
+            finally:
+                if os.path.exists(tmp_name):
+                    try:
+                        os.remove(tmp_name)
+                    except: pass
+            p.ln(5)
+        elif f_nombre.strip() or f_cargo.strip():
+            p.ln(10)
+            p.cell(60, 0, '', border='T')
+            p.ln(2)
+            
+        if f_nombre.strip() or f_cargo.strip():
+            p.set_font('Arial', 'B', 10)
+            p.cell(0, 5, str(f_nombre).strip().upper(), 0, 1, 'L')
+            p.set_font('Arial', '', 10)
+            p.cell(0, 5, str(f_cargo).strip(), 0, 1, 'L')
+            
         return bytes(p.output())
     
     e1, e2, e3 = st.columns([1,1,2])
     with e1:
-        st.download_button("📥 Descargar Excel", data=to_excel(df_res, v_cuotas, v_abonos, fecha_liquidacion, intereses_previos), file_name="liquidacion.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Descargar Excel", data=to_excel(df_res, v_cuotas, v_abonos, fecha_liquidacion, intereses_previos, texto_inicial, firma_nombre, firma_cargo, firma_imagen), file_name="liquidacion.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with e2:
         try:
-            pdf_bytes = to_pdf(df_res, totales_res, v_cuotas, v_abonos, fecha_liquidacion, intereses_previos)
+            pdf_bytes = to_pdf(df_res, totales_res, v_cuotas, v_abonos, fecha_liquidacion, intereses_previos, texto_inicial, firma_nombre, firma_cargo, firma_imagen)
             st.download_button("📄 Descargar PDF", data=pdf_bytes, file_name="liquidacion.pdf", mime="application/pdf")
         except Exception as e:
             st.warning(f"Error generando PDF: {e}")
